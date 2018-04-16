@@ -1,0 +1,526 @@
+<?php
+
+function donation_tracking_permission() {
+  return array(
+    'add donation' => array(
+      'title' => t('Add Donation'),
+      'description' => t('Ability to add new donation records.'),
+    ),
+    'view deposit' => array(
+      'title' => t('View Deposit'),
+      'description' => t('Can view donation deposit records'),
+    ),
+  );
+}
+
+function donation_tracking_menu() {
+  $items = array();
+
+  $items['tithe-links'] = array(
+    'title' => 'Tithe Links',
+    'page callback' => 'donation_tracking_tithe_links',
+    'access arguments' => array('view deposit'),
+    'menu_name' => 'main-menu',
+    'type' => MENU_NORMAL_ITEM,
+  );
+
+  $items['donation/mail-merge'] = array(
+    'title' => 'Mail Merge',
+    'file' => 'mail_merge/mail_merge.inc',
+    'page callback' => 'donation_tracking_mail_merge',
+    'page arguments' => array(),
+    'access arguments' => array('admin'),
+    'type' => MENU_CALLBACK,
+  );
+
+  $items['tithes/deposit/%'] = array(
+    'title' => 'View Tithe Deposit',
+    'page callback' => 'donation_tracking_view_deposit',
+    'page arguments' => array(2),
+    'access arguments' => array('view deposit'),
+    'type' => MENU_CALLBACK,
+  );
+
+  $items['tithes/deposit/%/%'] = array(
+    'title' => 'View Tithe Deposit',
+    'page callback' => 'donation_tracking_view_deposit',
+    'page arguments' => array(2, 3),
+    'access arguments' => array('view deposit'),
+    'type' => MENU_CALLBACK,
+  );
+
+  return $items;
+}
+
+
+function donation_tracking_tithe_links() {
+  drupal_goto('node/3758');
+}
+
+/**
+ * page callback
+ */
+function donation_tracking_page(){
+  $output = 'your page content';
+  return $output;
+}
+
+function donation_tracking_node_presave($node) {
+
+  if($node->type == 'tithe') {
+
+    $node->title = $node->field_donation_id['und'][0]['value'];
+
+    if ($node->field_doner_reference['und'] == null) {
+      $doner_id = $node->field_doner_id['und'][0]['value'];
+
+      $query = new EntityFieldQuery();
+
+      $query->entityCondition('entity_type', 'node')
+        ->entityCondition('bundle', 'doner')
+        ->propertyCondition('status', 1)
+        ->fieldCondition('field_doner_id', 'value', $doner_id, '=')
+        ->addMetaData('account', user_load(1)); // Run the query as user 1.
+
+      $result = $query->execute();
+
+      foreach($result['node'] as $k => $v) {
+        $node->field_doner_reference['und'][0]['target_id'] = $k;
+      }
+    }
+
+
+  }
+}
+
+function donation_tracking_form_alter(&$form, &$form_state, $form_id) {
+
+  if ($form_id == 'doner_node_form') {
+
+    $form['actions']['submit']['#submit'][] = 'donation_tracking_doner_submit';
+
+    $form['button_save_goto_tithe'] = array(
+      '#type' => 'submit',
+      '#value' => t('Add New Doner'),
+      '#submit' => $form['actions']['submit']['#submit'] ,
+      //'#limit_validation_errors' => array(),
+      '#access' => TRUE,
+      //'#markup' => '<a href="/doner/add-overlay">Add New Doner</a>',
+      //'#markup' => '<a href="#overlay=doner/add-overlay">Add New Doner</a>',
+      //'#markup' => '<a href="/node/add/tithe#overlay=doner/add-overlay">Add New Doner</a>',
+      //'#markup' => '<a href="http://gracech.dev.thecongruity.com/doner/add-overlay">Add New Doner</a>',
+      '#weight'=>$form['actions']['submit']['#weight']
+    );
+
+    //$form['button_save_goto_tithe']['#submit'][] = 'donation_tracking_doner_submit';
+    //xdebug_break();
+    //array('donation_tracking_doner_submit')
+
+  }
+
+  if ($form_id == 'tithe_node_form') {
+
+
+    /*
+    $form['link_add_doner'] = array(
+      '#type' => 'markup',
+      '#markup' => l('Add New Doner', 'doner/add-overlay'),
+      //'#markup' => '<a href="/doner/add-overlay">Add New Doner</a>',
+      //'#markup' => '<a href="#overlay=doner/add-overlay">Add New Doner</a>',
+      //'#markup' => '<a href="/node/add/tithe#overlay=doner/add-overlay">Add New Doner</a>',
+      //'#markup' => '<a href="http://gracech.dev.thecongruity.com/doner/add-overlay">Add New Doner</a>',
+      '#weight'=>$form['field_doner_reference']['#weight']
+    );
+    */
+    $form['button_add_doner'] = array(
+      '#type' => 'submit',
+      '#value' => t('Add New Doner'),
+      '#submit' => array('donation_tracking_add_new_doner'),
+      '#limit_validation_errors' => array(),
+      '#access' => TRUE,
+      //'#markup' => '<a href="/doner/add-overlay">Add New Doner</a>',
+      //'#markup' => '<a href="#overlay=doner/add-overlay">Add New Doner</a>',
+      //'#markup' => '<a href="/node/add/tithe#overlay=doner/add-overlay">Add New Doner</a>',
+      //'#markup' => '<a href="http://gracech.dev.thecongruity.com/doner/add-overlay">Add New Doner</a>',
+      '#weight'=>$form['field_doner_reference']['#weight']
+    );
+
+    //xdebug_break();
+
+    $form['actions']['submit']['#submit'][] = 'donation_tracking_node_submit';
+    $form['#validate'][] = 'donation_tracking_form_validate';
+    $form['field_doner_id']['#access'] = false;
+
+    $node = $form_state['node'];
+    if (!isset($node->nid) || isset($node->is_new)) {
+
+      if(isset($_SESSION['donation_purpose']) && empty($_SESSION['donation_purpose']) == false) {
+        $default = $_SESSION['donation_purpose'];
+      } else {
+        $default = 'general';
+      }
+      $form['field_donation_purpose']['und'][0]['value']['#default_value'] = $default;
+
+      if(isset($_SESSION['donation_last_date']) && empty($_SESSION['donation_last_date']) == false) {
+        $default = $_SESSION['donation_last_date'];
+        $form['field_donation_date']['und'][0]['#default_value']['value'] = $default;
+        $form['field_donation_date']['und'][0]['#default_value']['value2'] = $default;
+      }
+
+      $form['title']['#value'] = 'pending';
+
+    }
+
+    $form['#attached']['js'] = array(
+      drupal_get_path('module', 'donation_tracking') . '/donation_tracking.js',
+    );
+  }
+}
+
+function donation_tracking_add_new_doner($form, &$form_state) {
+  $form_state['rebuild'] = FALSE;
+  drupal_goto('node/add/doner');
+}
+
+function donation_tracking_node_submit(&$form, &$form_state) {
+
+  if(is_array($form) && $form['type']['#value'] == 'tithe') {
+    //xdebug_break();
+    $form_state['redirect'] = '/node/add/tithe';
+    return;
+  }
+  //
+
+  if($form->type == 'tithe') {
+    $default = (isset($form_state['field_donation_date']['und'][0]['#value']['value']['date']) ? $form_state['field_donation_date']['und'][0]['#value']['value']['date'] : '');
+    if (!empty($default)) {
+      $_SESSION['donation_last_date'] = date("Y-m-d", strtotime($default));
+    }
+
+    $default = (isset($form_state['field_donation_purpose']['und'][0]['value']['#value']) ? $form_state['field_donation_purpose']['und'][0]['value']['#value'] : '');
+    if (!empty($default)) {
+      $_SESSION['donation_purpose'] = $default;
+    }
+
+  }
+
+}
+
+function donation_tracking_doner_submit(&$form, &$form_state) {
+
+  $form_state['redirect'] = '/node/add/tithe';
+
+}
+
+
+function donation_tracking_form_validate(&$form, &$form_state) {
+
+  //$form_state['clicked_button']['#value']
+
+   // xdebug_break();
+  //$form['field_doner_reference']['und'][0]['target_id']['#value']
+
+  // Random example, if the title is 'test' throw an error
+  if (trim($form_state['values']['title']) == '') {
+
+   // xdebug_break();
+    //form_set_error('title', 'Title cannot be "test"');
+    //$form['title']['#value'] = 'pending';
+    //$form_state['values']['title'] == 'pending';
+  }
+}
+
+/*
+function donation_tracking_nodeapi (&$node, $op, $a3 = NULL, $a4 = NULL)
+{
+  if ($op == "presave") {
+    xdebug_break();
+
+  }
+}
+*/
+
+function donation_tracking_view_deposit($date = null, $purpose = 'general') {
+
+  //xdebug_break();
+
+  if($date == null || $date == 'today') {
+    $date = date("Y-m-d");
+  }
+
+  $content = '';
+
+  $array = array();
+  $view = views_get_view('donation_purposes');
+  $view->set_display("donation_purposes");
+  $view->set_arguments($array);
+  $view->pre_execute();
+  $view->execute();
+  $content .= $view->render();
+
+
+  //?field_donation_date_value[value][date]=09%2F18%2F2016&field_payment_type_value_op=or&field_payment_type_value[]=check&sort_by=title&sort_order=DESC
+  $array = array('cash',$date,$purpose);
+  $view = views_get_view('tithes');
+  $view->set_display("tithes_deposit_cash");
+  $view->set_arguments($array);
+  $view->pre_execute();
+  $view->execute();
+  $content .= $view->render();
+
+  $array = array('check',$date,$purpose);
+  $view = views_get_view('tithes');
+  $view->set_display("tithes_deposit_cash");
+  $view->set_arguments($array);
+  $view->pre_execute();
+  $view->execute();
+  $content .= $view->render();
+
+  $content .= 'Deposit total: ' . donation_tracking_get_deposit_total($date, $purpose);
+  
+  $array = array('receipt',$date,$purpose);
+  $view = views_get_view('tithes');
+  $view->set_display("tithes_deposit_cash");
+  $view->set_arguments($array);
+  $view->pre_execute();
+  $view->execute();
+  $content .= $view->render();
+
+  $form = drupal_get_form('donation_tracking_deposit_actions_form');
+  $content .= drupal_render($form);
+
+  return $content;
+
+}
+
+function donation_tracking_views_pre_render(&$view) {
+  if($view->name == "tithes") {
+    //xdebug_break();
+  }
+
+  if ($view->name=='donation_purposes') {
+
+    foreach($view->result as $r => $result) {
+
+      //Format the date to YYYY-MM-DD format
+      $v = $result->field_data_field_donation_date_field_donation_date_value;
+      $v = str_replace('/','-',$v);
+      $v = explode(' ',$v);
+      $v = $v[0];
+      $result->field_data_field_donation_date_field_donation_date_value = $v;
+      $result->field_field_donation_date[0]['rendered']['#markup'] = $v;
+    }
+
+  }
+}
+
+function donation_tracking_views_post_render(&$view) {
+  if($view->name == "tithes") {
+    //xdebug_break();
+  }
+}
+
+function donation_tracking_form_views_exposed_form_alter(&$form, &$form_state) {
+  /*
+  xdebug_break();
+  $filter_field = 'field_donation_date_value';
+  // Get the filters list for the current view. Here page_1 is the display ID.
+  $filters = $form_state['view']->get_items('filter');
+  if (isset($filters[$filter_field])) {
+    $info_key = 'filter-' . $filter_field;
+    unset($form[$filter_field], $form['#info'][$info_key]);
+  }
+
+  $filter_field = 'field_payment_type_value';
+  // Get the filters list for the current view. Here page_1 is the display ID.
+  $filters = $form_state['view']->get_items('filter');
+  if (isset($filters[$filter_field])) {
+    $info_key = 'filter-' . $filter_field;
+    unset($form[$filter_field], $form['#info'][$info_key]);
+  }
+  */
+}
+
+function donation_tracking_get_deposit_total($date = '', $purpose = 'general') {
+	
+	if($date == '') {
+		$date = strftime('%Y/%m/%d', time());
+	}
+	
+	$date = $date . ' 00:00:00';
+	
+	$msg = "Getting deposit total for $date of type $purpose";
+	watchdog('donation_tracking', $msg);
+	_dbg($msg);
+	
+  $query = new EntityFieldQuery();
+
+  $query->entityCondition('entity_type', 'node')
+    ->entityCondition('bundle', 'tithe')
+    ->fieldCondition('field_donation_date', 'value', $date, '=')
+    ->fieldCondition('field_donation_purpose', 'value', $purpose, '=')
+    ->fieldCondition('field_payment_type', 'value',array('cash','check'));
+
+  //  ->addMetaData('account', user_load(1));
+
+
+  $result = $query->execute();
+
+  //xdebug_break();
+
+  $total = 0;
+  if (isset($result['node'])) {
+    $news_items_nids = array_keys($result['node']);
+    $news_items = entity_load('node', $news_items_nids);
+
+    foreach($news_items as $node) {
+      if(isset($node->field_amount['und'][0]['value'])) {
+        $total += $node->field_amount['und'][0]['value'];
+      } else {
+        watchdog('donation_email', t('Node !nid is missing field_amount'), array('!nid' => $node->nid), WATCHDOG_ERROR);
+      }
+
+
+    }
+    //$GLOBALS['IDE_EVAL_CACHE']['05100ab5-07d6-4c3d-a96e-77ffd3475777'][1916]->
+  }
+
+
+  /*
+  if (isset($result['node'])) {
+    $stories = $result['node'];
+
+    // At first we need to get field's id. If you already know field id, you can ommit this step
+    // Get all fields attached to a given node type
+    $fields = field_info_instances('node', 'tithe');
+
+    // Get id of body field
+    $field_id = $fields['field_amount']['field_id'];
+
+    // Attach a field of selected id only to get value for it
+    field_attach_load('node', $stories, FIELD_LOAD_CURRENT, array('field_id' => $field_id));
+
+    //$stories[1915]->field_amount['und'][0]['value']
+
+    // Get values of our node field
+    $output = field_get_items('node', $stories, 'field_amount');
+  }
+*/
+
+  /*
+
+  $nodes = $result['node'];
+  foreach($nodes as $node)
+  {
+    // At first we need to get field's id. If you already know field id, you can ommit this step
+    // Get all fields attached to a given node type
+    $fields = field_info_instances('node', 'tithe');
+
+    // Get id of body field
+    $field_id = $fields['field_donation_date']['field_id'];
+
+    // Attach a field of selected id only to get value for it
+    //field_attach_load('node', $node, FIELD_LOAD_CURRENT, array('field_id' => $field_id));
+    $output = field_get_items('node', $node, 'field_donation_date');
+
+
+  }
+*/
+  return $total;
+
+}
+
+function donation_tracking_deposit_actions_form($form, &$form_state) {
+
+  $form['add_tithe'] = array(
+    '#type' => 'submit',
+    '#value' => 'Add Tithe',
+    '#name' => 'add_tithe'
+  );
+
+  $form['email_amounts'] = array(
+    '#type' => 'submit',
+    '#value' => 'Email Amounts',
+    '#name' => 'email_amounts'
+  );
+
+  return $form;
+}
+
+function donation_tracking_deposit_actions_form_validate($form, &$form_state) {
+  /*
+  $year_of_birth = $form_state['values']['year_of_birth'];
+  if ($year_of_birth && ($year_of_birth < 1900 || $year_of_birth > 2000)) {
+    form_set_error('year_of_birth', t('Enter a year between 1900 and 2000.'));
+  }
+  */
+}
+
+function donation_tracking_deposit_actions_form_submit($form, &$form_state) {
+
+  //xdebug_break();
+
+  $trigger_button = $form_state['triggering_element']['#name'];
+
+  if ($trigger_button == 'add_tithe') {
+    $form_state['redirect'] = '/node/add/tithe';
+  }
+
+  if ($trigger_button == 'email_amounts') {
+    donation_tracking_send_email();
+  }
+}
+
+function donation_tracking_send_email() {
+
+  $email_date = arg(2);
+  
+  if($email_date == null || $email_date == 'today') {
+    $email_date = date("Y-m-d");
+  }
+
+  $deposit_amount = donation_tracking_get_deposit_total($email_date);
+  //xdebug_break();
+
+  $message = "The tithe deposit for $email_date is $deposit_amount";
+
+  $params = array(
+    'subject' => t('Tithe Deposit Amount'),
+    'body' => check_markup(
+      t($message),
+      'plain_text'
+    ),
+  );
+
+  $emails = variable_get('deposit_email_list', 'someone@example.com');
+  $emails = explode(',',$emails);
+
+  //xdebug_break();
+
+  foreach($emails as $email) {
+    drupal_mail('donation_tracking', 'any_key', $email, language_default(), $params);
+  }
+
+}
+
+function donation_tracking_mail($key, &$message, $params) {
+  switch ($key) {
+    case 'any_key':
+      $message['subject'] = $params['subject'];
+      $message['body'][] = $params['body'];
+      break;
+  }
+}
+
+function _dbg($m) {
+	//debug("Getting deposit total for $date of type $purpose");
+	//dpm($m);
+	//assertTrue(FALSE, $m);
+	if (drupal_is_cli()) {
+		drupal_set_message($m);
+	}
+}
+
+//
+// End module
+//

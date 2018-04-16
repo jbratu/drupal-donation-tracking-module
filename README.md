@@ -1,1 +1,1 @@
-See branch 7.x-1.x-dev
+Current development release branch.

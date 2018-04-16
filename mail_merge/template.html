@@ -1,0 +1,96 @@
+<!doctype html>
+
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+
+    <title>Tax Donation Letter</title>
+
+    <style>
+
+        p {
+            font-family: "Times New Roman", Times, serif;
+            font-size: 1.4em;
+        }
+
+        .header {
+            min-height:1in;
+            max-height:1in;
+
+            max-width:100%;
+            text-align: center;
+            background-color:white;
+        }
+        .content {
+            min-height:11.2in;
+            max-height:11.2in;
+            background-color:white;
+        }
+        .footer {
+            min-height:0.6in;
+            max-height:0.6in;
+
+            max-width:100%;
+            text-align: center;
+            background-color:white;
+            page-break-after: always;
+        }
+
+        .signature {
+            width:150px;
+        }
+    </style>
+
+</head>
+
+<body>
+
+<div class="header">
+
+    <img src="header.png">
+
+</div>
+<div class="content">
+    <p>{date}</p>
+
+    <p>
+        {name}<br>
+
+    {address}<br>
+
+    {city}, {state} {zip}
+    </p>
+
+<p>
+    Dear {name},<br>
+    <br>
+    We at {church_name} would like to thank you for your contribution of {amount} into our unrestricted fund for the year of {year}.
+    <br> We will use this accordingly to the needs of our church with the federal I.D. #{church_tax_id}<br>
+    <br>
+    Pursuant to Internal Revenue Code requirements for substantiation of charitable contributions, no goods or services were provided in return for the Tax Deductible contributions. <br>
+    </p>
+
+    <p>
+    Sincerely,<br>
+    <img class="signature" src="signature.jpg"><br>
+    {treasurer}<br>
+    <br><br>
+    {church_name}<br>
+    {year} Finance Committe <br>
+    <br>
+    </p>
+
+</div>
+
+<div class="footer">
+
+    <p>
+
+    {church_name}<br>
+    {church_address} ▪ {church_city_state_zip}<br>
+    {church_phone} ▪ {church_website}
+    </p>
+</div>
+
+</body>
+</html>

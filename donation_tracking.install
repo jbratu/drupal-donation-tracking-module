@@ -1,0 +1,17 @@
+<?php
+
+function donation_tracking_install() {
+
+}
+
+function donation_tracking_schema() {
+  $schema = array();
+  $schema['cache_donation_tracking'] = drupal_get_schema_unprocessed('system', 'cache');
+  return $schema;
+}
+
+function donation_tracking_flush_caches() {
+  return array('cache_donation_tracking');
+}
+
+?>
