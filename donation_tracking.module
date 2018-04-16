@@ -215,34 +215,14 @@ function donation_tracking_doner_submit(&$form, &$form_state) {
 
 function donation_tracking_form_validate(&$form, &$form_state) {
 
-  //$form_state['clicked_button']['#value']
-
-   // xdebug_break();
-  //$form['field_doner_reference']['und'][0]['target_id']['#value']
-
   // Random example, if the title is 'test' throw an error
   if (trim($form_state['values']['title']) == '') {
 
-   // xdebug_break();
-    //form_set_error('title', 'Title cannot be "test"');
-    //$form['title']['#value'] = 'pending';
-    //$form_state['values']['title'] == 'pending';
   }
 }
 
-/*
-function donation_tracking_nodeapi (&$node, $op, $a3 = NULL, $a4 = NULL)
-{
-  if ($op == "presave") {
-    xdebug_break();
-
-  }
-}
-*/
 
 function donation_tracking_view_deposit($date = null, $purpose = 'general') {
-
-  //xdebug_break();
 
   if($date == null || $date == 'today') {
     $date = date("Y-m-d");
@@ -286,11 +266,34 @@ function donation_tracking_view_deposit($date = null, $purpose = 'general') {
   $view->execute();
   $content .= $view->render();
 
+  $display_id = 'default';
+  $view = views_get_view('tithes_online');
+  $view->set_display($display_id);
+
+  $id = 'field_donation_date_value';
+  $item = $view->get_item($display_id, 'filter', $id);
+
+  //Get the date of last monday through today, Sunday.
+  $start = date('Y-m-d', strtotime('-6 days', strtotime($date)));
+  $end = $date;
+
+  $item['default_date'] = $start;
+  $item['default_to_date'] = $end;
+
+  $view->set_item($display_id, 'filter', $id, $item);
+  $view->pre_execute();
+  $view->execute();
+  $content .= $view->render();
+
   $form = drupal_get_form('donation_tracking_deposit_actions_form');
+
+  $online_total = donation_tracking_get_online_deposit_total($date);
+  $form['online_total'] = array(
+    '#markup' => "<p>Online total is $online_total</p>",
+  );
   $content .= drupal_render($form);
 
   return $content;
-
 }
 
 function donation_tracking_views_pre_render(&$view) {
@@ -430,6 +433,50 @@ function donation_tracking_get_deposit_total($date = '', $purpose = 'general') {
 
 }
 
+function donation_tracking_get_online_deposit_total($period_end_date = '') {
+
+  $purpose = 'general';
+
+  if($period_end_date == '') {
+    $date = strftime('%Y/%m/%d', time());
+  } else {
+    $date = $period_end_date;
+  }
+
+  $date_start = date('Y-m-d', strtotime('-6 days', strtotime($date))) . ' 00:00:00';
+  $date_end = $date . ' 23:59:59';
+
+  $query = new EntityFieldQuery();
+
+  $query->entityCondition('entity_type', 'node')
+    ->entityCondition('bundle', 'tithe')
+    ->fieldCondition('field_donation_date', 'value', $date_start, '>=')
+    ->fieldCondition('field_donation_date', 'value', $date_end, '<=')
+    ->fieldCondition('field_donation_purpose', 'value', $purpose, '=')
+    ->fieldCondition('field_payment_type', 'value',array('online','tithely'));
+
+  $result = $query->execute();
+
+  $total = 0;
+  if (isset($result['node'])) {
+    $news_items_nids = array_keys($result['node']);
+    $news_items = entity_load('node', $news_items_nids);
+
+    foreach($news_items as $node) {
+      if(isset($node->field_amount['und'][0]['value'])) {
+        $total += $node->field_amount['und'][0]['value'];
+      } else {
+        watchdog('donation_email', t('Node !nid is missing field_amount'), array('!nid' => $node->nid), WATCHDOG_ERROR);
+      }
+
+    }
+  }
+
+  return $total;
+
+}
+
+
 function donation_tracking_deposit_actions_form($form, &$form_state) {
 
   $form['add_tithe'] = array(
@@ -458,8 +505,6 @@ function donation_tracking_deposit_actions_form_validate($form, &$form_state) {
 
 function donation_tracking_deposit_actions_form_submit($form, &$form_state) {
 
-  //xdebug_break();
-
   $trigger_button = $form_state['triggering_element']['#name'];
 
   if ($trigger_button == 'add_tithe') {
@@ -480,9 +525,10 @@ function donation_tracking_send_email() {
   }
 
   $deposit_amount = donation_tracking_get_deposit_total($email_date);
-  //xdebug_break();
+  $online_deposit_amount = donation_tracking_get_online_deposit_total($email_date);
 
-  $message = "The tithe deposit for $email_date is $deposit_amount";
+  $message = "The tithe deposit for $email_date is $deposit_amount\n";
+  $message .= "Online donations deposited during the last week total $online_deposit_amount";
 
   $params = array(
     'subject' => t('Tithe Deposit Amount'),
@@ -495,10 +541,9 @@ function donation_tracking_send_email() {
   $emails = variable_get('deposit_email_list', 'someone@example.com');
   $emails = explode(',',$emails);
 
-  //xdebug_break();
-
   foreach($emails as $email) {
     drupal_mail('donation_tracking', 'any_key', $email, language_default(), $params);
+    drupal_set_message(t('Sent donation amount to !email', array('!email' => $email)));
   }
 
 }
