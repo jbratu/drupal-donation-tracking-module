@@ -527,14 +527,38 @@ function donation_tracking_send_email() {
   $deposit_amount = donation_tracking_get_deposit_total($email_date);
   $online_deposit_amount = donation_tracking_get_online_deposit_total($email_date);
 
-  $message = "The tithe deposit for $email_date is $deposit_amount\n";
-  $message .= "Online donations deposited during the last week total $online_deposit_amount";
+  //Running total of any amounts that need to be totaled
+  $combined_total = 0;
+
+  //Clean and add amounts deposited
+  $amt = $deposit_amount;
+  $amt = str_replace(',','', $amt);
+  $amt = str_replace('$','', $amt);
+  $combined_total += $amt;
+
+  //Clean and add online amounts
+  $amt = $online_deposit_amount;
+  $amt = str_replace(',','', $amt);
+  $amt = str_replace('$','', $amt);
+  $combined_total += $amt;
+
+  //If we have money_format let's pretty up the output.
+  if(function_exists('money_format')){
+    setlocale(LC_MONETARY, 'en_US.UTF-8');
+    $deposit_amount = money_format('%.2n', $deposit_amount);
+    $online_deposit_amount = money_format('%.2n', $online_deposit_amount);
+    $combined_total = money_format('%.2n', $combined_total);
+  }
+
+  $message = "The tithe deposit for $email_date is: $deposit_amount\n";
+  $message .= "Online donations deposited during the last week total: $online_deposit_amount \n";
+  $message .= "Total (online and tithes): $combined_total \n";
 
   $params = array(
     'subject' => t('Tithe Deposit Amount'),
     'body' => check_markup(
-      t($message),
-      'plain_text'
+      $message,
+      'full_html'
     ),
   );
 
